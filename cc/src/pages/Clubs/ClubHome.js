@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 import { format } from 'date-fns';
+import API_BASE_URL from '../../config/api';
 import { jwtDecode } from 'jwt-decode';
 
 const ClubHome = () => {
@@ -50,7 +51,7 @@ const ClubHome = () => {
         setLoading(prev => ({ ...prev, fetch: true }));
         const clubId = getClubId();
         
-        const res = await axios.get(`http://localhost:5000/api/events/club`, {
+        const res = await axios.get(`${API_BASE_URL}/api/events/club`, {
           headers: { 
             Authorization: `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
@@ -85,7 +86,7 @@ const ClubHome = () => {
       setLoading(prev => ({ ...prev, create: true }));
       const clubId = getClubId();
       
-      const res = await axios.post('http://localhost:5000/api/events', {
+      const res = await axios.post(`${API_BASE_URL}/api/events`, {
         ...eventData,
         club: clubId
       }, {
@@ -116,7 +117,7 @@ const ClubHome = () => {
   const handleDelete = async (id) => {
     try {
       setLoading(prev => ({ ...prev, [id]: true }));
-      await axios.delete(`http://localhost:5000/api/events/${id}`, {
+      await axios.delete(`${API_BASE_URL}/api/events/${id}`, {
         headers: { 
           Authorization: `Bearer ${localStorage.getItem('token')}` 
         }

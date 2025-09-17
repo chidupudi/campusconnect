@@ -24,6 +24,7 @@ import {
 } from "@mui/material";
 import axios from "axios";
 import { format } from "date-fns";
+import API_BASE_URL from '../../config/api';
 
 const AdminHome = () => {
   const [events, setEvents] = useState([]);
@@ -35,7 +36,6 @@ const AdminHome = () => {
   const [currentItem, setCurrentItem] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  const API_BASE_URL = "http://localhost:5000/api";
 
   const fetchData = async () => {
     try {
@@ -43,7 +43,7 @@ const AdminHome = () => {
       setError(null);
       const token = localStorage.getItem("token");
       
-      const response = await axios.get(`${API_BASE_URL}/events/admin/all`, {
+      const response = await axios.get(`${API_BASE_URL}/api/events/admin/all`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -82,7 +82,7 @@ const AdminHome = () => {
       const token = localStorage.getItem("token");
       
       await axios.put(
-        `${API_BASE_URL}/events/admin/${currentItem._id}`,
+        `${API_BASE_URL}/api/events/admin/${currentItem._id}`,
         editForm,
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -102,7 +102,7 @@ const AdminHome = () => {
       const token = localStorage.getItem("token");
 
       await axios.delete(
-        `${API_BASE_URL}/events/admin/${currentItem._id}`,
+        `${API_BASE_URL}/api/events/admin/${currentItem._id}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 

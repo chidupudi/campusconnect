@@ -29,7 +29,7 @@ services:
       MONGODB_URI: mongodb://admin:password123@mongodb:27017/campusconnect?authSource=admin
       JWT_SECRET: your-secret-key-change-in-production
     ports:
-      - "5000:5000"
+      - "3800:5000"
     depends_on:
       - mongodb
     volumes:
@@ -51,10 +51,10 @@ services:
     container_name: cc-frontend
     restart: unless-stopped
     environment:
-      REACT_APP_API_URL: http://localhost:5000
+      REACT_APP_API_URL: http://localhost:3800
       REACT_APP_NODE_ENV: production
     ports:
-      - "3000:3000"
+      - "3500:3000"
     depends_on:
       - backend
     networks:

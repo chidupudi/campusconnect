@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7-jammy
+    container_name: campusconnect-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: campusconnect
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - campusconnect-network
+
+  # Backend Server
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: campusconnect-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/campusconnect?authSource=admin
+      JWT_SECRET: your-secret-key-change-in-production
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    networks:
+      - campusconnect-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./cc
+      dockerfile: Dockerfile
+    container_name: campusconnect-frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: http://localhost:5000
+      REACT_APP_NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - campusconnect-network
+
+networks:
+  campusconnect-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local

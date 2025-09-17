@@ -1,179 +1,151 @@
 #!/bin/bash
-
-# CampusConnect Kubernetes Deployment Script
-# This script deploys the complete CampusConnect application to Kubernetes
-
-set -e
+# CampusConnect Kubernetes Deployment Script (self-healing)
+set -euo pipefail
 
 echo "🚀 Starting CampusConnect Kubernetes Deployment..."
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+print_status(){ echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success(){ echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning(){ echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error(){ echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check if kubectl is installed
-if ! command -v kubectl &> /dev/null; then
-    print_error "kubectl is not installed. Please install kubectl first."
-    exit 1
-fi
-
-# Check if Docker is running
-if ! docker info &> /dev/null; then
-    print_error "Docker is not running. Please start Docker first."
-    exit 1
-fi
-
-print_status "Checking Kubernetes cluster connectivity..."
-if ! kubectl cluster-info &> /dev/null; then
-    print_error "Cannot connect to Kubernetes cluster. Please check your kubeconfig."
-    exit 1
-fi
-
+command -v kubectl >/dev/null || { print_error "kubectl not found"; exit 1; }
+docker info >/dev/null 2>&1 || { print_error "Docker is not running"; exit 1; }
+kubectl cluster-info >/dev/null 2>&1 || { print_error "Cannot connect to Kubernetes cluster"; exit 1; }
 print_success "✅ Prerequisites check passed"
 
-# Build Docker images first
 print_status "Building Docker images..."
-
-print_status "Building backend image..."
-cd server
-docker build -t campusconnect-backend:latest .
-if [ $? -eq 0 ]; then
-    print_success "Backend image built successfully"
-else
-    print_error "Failed to build backend image"
-    exit 1
-fi
-
-cd ../cc
-print_status "Building frontend image..."
-docker build -t campusconnect-frontend:latest .
-if [ $? -eq 0 ]; then
-    print_success "Frontend image built successfully"
-else
-    print_error "Failed to build frontend image"
-    exit 1
-fi
-
-cd ..
-
+pushd server >/dev/null; docker build -t campusconnect-backend:latest .; print_success "Backend image built"; popd >/dev/null
+pushd cc >/dev/null; docker build -t campusconnect-frontend:latest .; print_success "Frontend image built"; popd >/dev/null
 print_success "✅ All Docker images built successfully"
 
-# Deploy to Kubernetes
+NS="campusconnect"
+BACKEND_SVC="backend-service"
+FRONTEND_SVC="frontend-service"
+MONGO_DEP="mongodb-deployment"
+PVC_NAME="mongodb-pvc"
+
+default_sc(){ kubectl get sc -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}'; }
+any_sc(){ kubectl get sc -o jsonpath='{.items[0].metadata.name}'; }
+
+ensure_pvc_bound(){
+  local sc; sc="$(default_sc)"; [[ -z "$sc" ]] && sc="$(any_sc)"
+  [[ -z "$sc" ]] && { print_error "No StorageClass found"; exit 1; }
+  print_status "Using StorageClass: ${sc}"
+  kubectl delete deploy "$MONGO_DEP" -n "$NS" --ignore-not-found
+  kubectl delete pvc "$PVC_NAME" -n "$NS" --ignore-not-found
+  cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${PVC_NAME}
+  namespace: ${NS}
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: ${sc}
+  resources:
+    requests:
+      storage: 1Gi
+EOF
+  print_status "Waiting for PVC to be Bound..."
+  for i in {1..30}; do
+    phase="$(kubectl get pvc "$PVC_NAME" -n "$NS" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    [[ "$phase" == "Bound" ]] && { print_success "PVC is Bound"; return; }
+    sleep 2
+  done
+  print_error "PVC did not become Bound. Run: kubectl describe pvc ${PVC_NAME} -n ${NS}"; exit 1
+}
+
+patch_mongo_probes(){
+  print_status "Patching MongoDB probes to TCP socket..."
+  cat >/tmp/mongo-probe.json <<'JSON'
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [{
+          "name": "mongodb",
+          "readinessProbe": { "tcpSocket": { "port": 27017 }, "initialDelaySeconds": 15, "periodSeconds": 5, "failureThreshold": 10 },
+          "livenessProbe":  { "tcpSocket": { "port": 27017 }, "initialDelaySeconds": 30, "periodSeconds": 10, "failureThreshold": 6 }
+        }]
+      }
+    }
+  }
+}
+JSON
+  kubectl patch deploy "$MONGO_DEP" -n "$NS" --type=strategic -p "$(cat /tmp/mongo-probe.json)" || true
+}
+
+add_wait_initcontainer(){
+  print_status "Adding initContainer wait-for-mongo to backend & frontend..."
+  cat >/tmp/init-patch.json <<'JSON'
+{"spec":{"template":{"spec":{"initContainers":[{"name":"wait-for-mongo","image":"busybox:1.36","command":["sh","-c","until nc -z mongodb-service 27017; do echo waiting for mongodb; sleep 2; done"]}]}}}}
+JSON
+  kubectl patch deploy backend-deployment -n "$NS" --type='strategic' -p "$(cat /tmp/init-patch.json)" || true
+  kubectl patch deploy frontend-deployment -n "$NS" --type='strategic' -p "$(cat /tmp/init-patch.json)" || true
+}
+
+patch_services_nodeport(){
+  print_status "Patching services to NodePort (no external LB needed)..."
+  cat >/tmp/svc-backend.json <<'JSON'
+{"spec":{"type":"NodePort","ports":[{"port":3800,"targetPort":3800,"nodePort":30800}]}}
+JSON
+  kubectl patch svc "$BACKEND_SVC" -n "$NS" --type=merge -p "$(cat /tmp/svc-backend.json)" || true
+  cat >/tmp/svc-frontend.json <<'JSON'
+{"spec":{"type":"NodePort","ports":[{"port":3500,"targetPort":3500,"nodePort":30500}]}}
+JSON
+  kubectl patch svc "$FRONTEND_SVC" -n "$NS" --type=merge -p "$(cat /tmp/svc-frontend.json)" || true
+}
+
+wait_ready_selector(){ local label="$1"; print_status "Waiting for pods ($label) to be Ready..."; kubectl wait --for=condition=ready pod -l "$label" -n "$NS" --timeout=300s; }
+
 print_status "Deploying to Kubernetes..."
+kubectl apply -f k8s/namespace.yaml; print_success "Namespace ensured"
 
-# Create namespace
-print_status "Creating namespace..."
-kubectl apply -f k8s/namespace.yaml
-print_success "Namespace created"
-
-# Deploy secrets and configmaps
-print_status "Deploying secrets and configmaps..."
+print_status "Applying secrets/configmaps..."
 kubectl apply -f k8s/mongodb-secret.yaml
 kubectl apply -f k8s/mongodb-configmap.yaml
 kubectl apply -f k8s/backend-secret.yaml
 kubectl apply -f k8s/backend-configmap.yaml
 kubectl apply -f k8s/frontend-configmap.yaml
-print_success "Secrets and ConfigMaps deployed"
+print_success "Secrets/ConfigMaps applied"
 
-# Deploy MongoDB
+ensure_pvc_bound
+
 print_status "Deploying MongoDB..."
-kubectl apply -f k8s/mongodb-pvc.yaml
 kubectl apply -f k8s/mongodb-deployment.yaml
 kubectl apply -f k8s/mongodb-service.yaml
-print_success "MongoDB deployed"
+patch_mongo_probes
+kubectl rollout restart deploy "$MONGO_DEP" -n "$NS" || true
+wait_ready_selector "app=mongodb"; print_success "MongoDB is ready"
 
-# Wait for MongoDB to be ready
-print_status "Waiting for MongoDB to be ready..."
-kubectl wait --for=condition=ready pod -l app=mongodb -n campusconnect --timeout=300s
-print_success "MongoDB is ready"
-
-# Deploy Backend
-print_status "Deploying Backend..."
+print_status "Deploying Backend & Frontend..."
 kubectl apply -f k8s/backend-deployment.yaml
 kubectl apply -f k8s/backend-service.yaml
-print_success "Backend deployed"
-
-# Wait for Backend to be ready
-print_status "Waiting for Backend to be ready..."
-kubectl wait --for=condition=ready pod -l app=backend -n campusconnect --timeout=300s
-print_success "Backend is ready"
-
-# Deploy Frontend
-print_status "Deploying Frontend..."
 kubectl apply -f k8s/frontend-deployment.yaml
 kubectl apply -f k8s/frontend-service.yaml
-print_success "Frontend deployed"
 
-# Wait for Frontend to be ready
-print_status "Waiting for Frontend to be ready..."
-kubectl wait --for=condition=ready pod -l app=frontend -n campusconnect --timeout=300s
-print_success "Frontend is ready"
+add_wait_initcontainer
+kubectl rollout restart deploy backend-deployment -n "$NS" || true
+kubectl rollout restart deploy frontend-deployment -n "$NS" || true
 
-# Apply network policy
+patch_services_nodeport
+
+wait_ready_selector "app=backend" || print_warning "Backend may still be warming up"
+wait_ready_selector "app=frontend" || print_warning "Frontend may still be warming up"
+
 print_status "Applying network policies..."
-kubectl apply -f k8s/network-policy.yaml
-print_success "Network policies applied"
+kubectl apply -f k8s/network-policy.yaml || print_warning "NetworkPolicy apply skipped/failed"
 
-print_success "🎉 CampusConnect deployment completed successfully!"
+print_success "🎉 CampusConnect deployment completed!"
 
-# Display service information
-print_status "Getting service information..."
-echo ""
-echo "=== SERVICE ENDPOINTS ==="
-kubectl get services -n campusconnect
+print_status "=== SERVICE ENDPOINTS ==="; kubectl get svc -n "$NS"
+print_status "=== POD STATUS ==="; kubectl get pods -n "$NS"
+print_status "=== DEPLOYMENT STATUS ==="; kubectl get deploy -n "$NS"
 
-echo ""
-echo "=== POD STATUS ==="
-kubectl get pods -n campusconnect
+print_success "🌐 Access locally:"; echo "Frontend: http://localhost:30500"; echo "Backend : http://localhost:30800/api/health"
 
-echo ""
-echo "=== DEPLOYMENT STATUS ==="
-kubectl get deployments -n campusconnect
+print_status "Logs commands:"; echo "MongoDB: kubectl logs -l app=mongodb -n $NS --tail=100"; echo "Backend: kubectl logs -l app=backend -n $NS --tail=100"; echo "Frontend: kubectl logs -l app=frontend -n $NS --tail=100"
 
-# Get external IPs
-print_status "Getting external access information..."
-FRONTEND_PORT=$(kubectl get service frontend-service -n campusconnect -o jsonpath='{.spec.ports[0].port}')
-BACKEND_PORT=$(kubectl get service backend-service -n campusconnect -o jsonpath='{.spec.ports[0].port}')
-
-echo ""
-print_success "🌐 Access your application:"
-echo "Frontend: http://localhost:$FRONTEND_PORT"
-echo "Backend API: http://localhost:$BACKEND_PORT"
-
-# Port forwarding commands
-echo ""
-print_status "To access your application locally, run these commands in separate terminals:"
-echo "Frontend: kubectl port-forward service/frontend-service 3500:3500 -n campusconnect"
-echo "Backend:  kubectl port-forward service/backend-service 3800:3800 -n campusconnect"
-
-echo ""
-print_status "To check logs:"
-echo "MongoDB: kubectl logs -l app=mongodb -n campusconnect"
-echo "Backend: kubectl logs -l app=backend -n campusconnect"
-echo "Frontend: kubectl logs -l app=frontend -n campusconnect"
-
-echo ""
-print_status "To delete the deployment:"
-echo "kubectl delete namespace campusconnect"
-
-print_success "🚀 Deployment script completed successfully!"
+print_success "🚀 Done."

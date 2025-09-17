@@ -40,7 +40,8 @@ const SubmitButton = styled(Button)(({ theme }) => ({
 }));
 
 const Signup = () => {
-  const navigate = useNavigate(); // Initialize useNavigate
+  const navigate = useNavigate();
+
   const [tabValue, setTabValue] = useState(0);
   const [studentData, setStudentData] = useState({
     name: '',
@@ -61,91 +62,73 @@ const Signup = () => {
     severity: 'success'
   });
 
-  const handleTabChange = (event, newValue) => {
-    setTabValue(newValue);
-  };
+  const handleTabChange = (_e, newValue) => setTabValue(newValue);
 
   const handleStudentChange = (e) => {
     const { name, value } = e.target;
-    setStudentData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setStudentData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleClubChange = (e) => {
     const { name, value } = e.target;
-    setClubData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setClubData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
+  const handleCloseSnackbar = () =>
+    setSnackbar((prev) => ({ ...prev, open: false }));
+
+  // --- Helpers ---
+  const showError = (err) => {
+    const msg =
+      err?.response?.data?.message ||
+      err?.message ||
+      'Request failed. Please try again.';
+    setSnackbar({ open: true, message: msg, severity: 'error' });
   };
 
-  const handleStudentSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    
-    try {
-      const response = await axios.post(`${API_BASE_URL}/api/students/signup`, studentData);
-      console.log('Signup successful:', response.data);
-      setSnackbar({
-        open: true,
-        message: 'Student registration successful!',
-        severity: 'success'
-      });
-      setStudentData({
-        name: '',
-        email: '',
-        course: '',
-        password: ''
-      });
-      navigate('/login'); // Redirect to /login after successful signup
-    } catch (error) {
-      console.error('Signup error:', error.response?.data || error.message);
-      setSnackbar({
-        open: true,
-        message: error.response?.data?.message || 'Registration failed. Please try again.',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const showSuccess = (msg) =>
+    setSnackbar({ open: true, message: msg, severity: 'success' });
 
-  const handleClubSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    
-    try {
-      const response = await axios.post(`${API_BASE_URL}/api/clubs/signup`, clubData);
-      console.log('Signup successful:', response.data);
-      setSnackbar({
-        open: true,
-        message: 'Club registration successful!',
-        severity: 'success'
-      });
-      setClubData({
-        name: '',
-        email: '',
-        description: '',
-        password: ''
-      });
-      navigate('/login'); // Redirect to /login after successful signup
-    } catch (error) {
-      console.error('Signup error:', error.response?.data || error.message);
-      setSnackbar({
-        open: true,
-        message: error.response?.data?.message || 'Registration failed. Please try again.',
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // --- Submit handlers ---
+ const handleStudentSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  try {
+    console.log('API_BASE_URL =', API_BASE_URL); // should print http://localhost:30800
+    await axios.post(`${API_BASE_URL}/api/students/signup`, studentData);
+    showSuccess('Student registration successful!');
+    setStudentData({ name: '', email: '', course: '', password: '' });
+    navigate('/login');
+  } catch (err) {
+    console.error('Student signup error:', err?.response?.data || err);
+    showError(err);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleClubSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  try {
+    await axios.post(`${API_BASE_URL}/api/clubs/signup`, clubData);
+    showSuccess('Club registration successful!');
+    setClubData({ name: '', email: '', description: '', password: '' });
+    navigate('/login');
+  } catch (err) {
+    console.error('Club signup error:', err?.response?.data || err);
+    showError(err);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+  const studentDisabled =
+    !studentData.name || !studentData.email || !studentData.course || !studentData.password || loading;
+
+  const clubDisabled =
+    !clubData.name || !clubData.email || !clubData.password || loading;
 
   return (
     <Root>
@@ -154,7 +137,7 @@ const Signup = () => {
           <Typography component="h1" variant="h5" align="center">
             Sign Up
           </Typography>
-          
+
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 2 }}>
             <Tabs value={tabValue} onChange={handleTabChange} centered>
               <Tab label="Student" />
@@ -209,7 +192,7 @@ const Signup = () => {
                 fullWidth
                 variant="contained"
                 color="primary"
-                disabled={loading}
+                disabled={studentDisabled}
               >
                 {loading ? 'Processing...' : 'Sign Up as Student'}
               </SubmitButton>
@@ -264,20 +247,19 @@ const Signup = () => {
                 fullWidth
                 variant="contained"
                 color="primary"
-                disabled={loading}
+                disabled={clubDisabled}
               >
                 {loading ? 'Processing...' : 'Sign Up as Club'}
               </SubmitButton>
             </Form>
           )}
 
-          {/* Already have an account? Login */}
           <Box sx={{ textAlign: 'center', mt: 2 }}>
             <Typography variant="body2">
               Already have an account?{' '}
-              <Button 
-                variant="text" 
-                color="primary" 
+              <Button
+                variant="text"
+                color="primary"
                 onClick={() => navigate('/login')}
               >
                 Login

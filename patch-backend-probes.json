@@ -1,0 +1,29 @@
+[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/readinessProbe",
+    "value": {
+      "httpGet": { "path": "/health", "port": 5000 },
+      "initialDelaySeconds": 10,
+      "periodSeconds": 5,
+      "failureThreshold": 12,
+      "timeoutSeconds": 3
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/livenessProbe",
+    "value": {
+      "httpGet": { "path": "/health", "port": 5000 },
+      "initialDelaySeconds": 20,
+      "periodSeconds": 10,
+      "failureThreshold": 6,
+      "timeoutSeconds": 3
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/ports",
+    "value": [ { "containerPort": 5000 } ]
+  }
+]

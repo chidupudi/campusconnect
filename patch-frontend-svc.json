@@ -1,0 +1,8 @@
+{
+  "spec": {
+    "type": "NodePort",
+    "ports": [
+      { "port": 3500, "targetPort": 3000, "nodePort": 30500 }
+    ]
+  }
+}

@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: campusconnect-frontend:latest
-        imagePullPolicy: Never
+        image: IMAGE_FRONTEND
+        imagePullPolicy: Always
         ports:
         - containerPort: 3000
         env:

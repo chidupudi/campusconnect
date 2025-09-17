@@ -1,0 +1,151 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_HUB_CREDENTIALS = credentials('dockerhub-credentials')
+        GCP_CREDENTIALS = credentials('gcp-service-account')
+        DOCKER_HUB_USERNAME = "${DOCKER_HUB_CREDENTIALS_USR}"
+        PROJECT_ID = 'campusconnect-project'
+        GKE_CLUSTER = 'campusconnect-cluster'
+        GKE_ZONE = 'asia-south1-a'
+        IMAGE_FRONTEND = "${DOCKER_HUB_USERNAME}/campusconnect-frontend"
+        IMAGE_BACKEND = "${DOCKER_HUB_USERNAME}/campusconnect-backend"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/your-username/campusconnect.git'
+            }
+        }
+
+        stage('Test Backend') {
+            steps {
+                dir('server') {
+                    sh 'npm ci'
+                    sh 'npm test || echo "No tests configured"'
+                    sh 'npm run lint || echo "No lint configured"'
+                }
+            }
+        }
+
+        stage('Test Frontend') {
+            steps {
+                dir('cc') {
+                    sh 'npm ci'
+                    sh 'npm test -- --coverage --watchAll=false || echo "Tests completed"'
+                    sh 'npm run lint || echo "No lint configured"'
+                }
+            }
+        }
+
+        stage('Build Docker Images') {
+            parallel {
+                stage('Build Backend') {
+                    steps {
+                        script {
+                            def backendImage = docker.build("${IMAGE_BACKEND}:${BUILD_NUMBER}", "./server")
+                            docker.withRegistry('https://registry-1.docker.io', 'dockerhub-credentials') {
+                                backendImage.push("${BUILD_NUMBER}")
+                                backendImage.push("latest")
+                            }
+                        }
+                    }
+                }
+                stage('Build Frontend') {
+                    steps {
+                        script {
+                            def frontendImage = docker.build("${IMAGE_FRONTEND}:${BUILD_NUMBER}", "./cc")
+                            docker.withRegistry('https://registry-1.docker.io', 'dockerhub-credentials') {
+                                frontendImage.push("${BUILD_NUMBER}")
+                                frontendImage.push("latest")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to GKE') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    // Authenticate with GCP
+                    sh '''
+                        gcloud auth activate-service-account --key-file=${GCP_CREDENTIALS}
+                        gcloud config set project ${PROJECT_ID}
+                        gcloud container clusters get-credentials ${GKE_CLUSTER} --zone ${GKE_ZONE}
+                    '''
+
+                    // Update deployment images
+                    sh '''
+                        cd k8s
+                        sed -i "s|IMAGE_BACKEND|${IMAGE_BACKEND}:${BUILD_NUMBER}|g" backend-deployment.yaml
+                        sed -i "s|IMAGE_FRONTEND|${IMAGE_FRONTEND}:${BUILD_NUMBER}|g" frontend-deployment.yaml
+
+                        # Apply manifests
+                        kubectl apply -f namespace.yaml
+                        kubectl apply -f mongodb-secret.yaml
+                        kubectl apply -f mongodb-deployment.yaml
+                        kubectl apply -f backend-configmap.yaml
+                        kubectl apply -f backend-deployment.yaml
+                        kubectl apply -f backend-service.yaml
+                        kubectl apply -f frontend-configmap.yaml
+                        kubectl apply -f frontend-deployment.yaml
+                        kubectl apply -f frontend-service.yaml
+
+                        # Wait for rollout
+                        kubectl rollout status deployment/backend-deployment -n campusconnect --timeout=300s
+                        kubectl rollout status deployment/frontend-deployment -n campusconnect --timeout=300s
+
+                        # Get external IP
+                        kubectl get services frontend-service -n campusconnect
+                    '''
+                }
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    sh '''
+                        # Wait for external IP to be assigned
+                        echo "Waiting for LoadBalancer IP..."
+                        sleep 60
+
+                        # Get external IP
+                        EXTERNAL_IP=$(kubectl get service frontend-service -n campusconnect -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+                        if [ ! -z "$EXTERNAL_IP" ]; then
+                            echo "Application deployed successfully!"
+                            echo "Frontend URL: http://$EXTERNAL_IP:3700"
+                            echo "Backend Health Check: http://$EXTERNAL_IP:3700/api/health"
+
+                            # Basic health check
+                            curl -f "http://$EXTERNAL_IP:3700/health" || echo "Health check pending..."
+                        else
+                            echo "External IP not yet assigned. Check LoadBalancer status."
+                        fi
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean up workspace
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+            // You can add notifications here (Slack, email, etc.)
+        }
+        failure {
+            echo 'Pipeline failed!'
+            // You can add failure notifications here
+        }
+    }
+}

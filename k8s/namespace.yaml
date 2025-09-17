@@ -4,3 +4,4 @@ metadata:
   name: campusconnect
   labels:
     name: campusconnect
+    environment: production

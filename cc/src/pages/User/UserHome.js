@@ -42,7 +42,7 @@ const AllEventsPage = () => {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        const response = await axios.get('${API_BASE_URL}/api/events/all');
+        const response = await axios.get(`${API_BASE_URL}/api/events/all`);
         setEvents(response.data);
         
         // Initialize purchase counts

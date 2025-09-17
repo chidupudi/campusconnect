@@ -16,8 +16,16 @@ app.use((req, res, next) => {
 });
 
 // Middleware
+const corsOrigins = [
+  'http://localhost:3500',
+  'http://localhost:3000',
+  'http://frontend-service:3500',
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_SERVICE_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: ['http://localhost:3500', 'http://localhost:3000', 'http://frontend-service:3500'],
+  origin: corsOrigins,
   credentials: true
 }));
 app.use(express.json());
@@ -99,4 +107,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] ✅ CampusConnect Backend running on port ${PORT}`);
   console.log(`[SERVER] Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`[SERVER] API Base URL: http://localhost:${PORT}`);
+  console.log(`[SERVER] CORS Origins:`, corsOrigins);
+  console.log(`[SERVER] MongoDB URI: ${mongoURI ? 'Connected' : 'Not configured'}`);
 });

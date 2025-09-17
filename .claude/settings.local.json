@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(docker-compose:*)",
+      "Bash(curl:*)",
+      "Bash(kubectl get pods:*)",
+      "Bash(kubectl delete pod:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(kubectl get services:*)",
+      "Bash(kubectl get:*)",
+      "Bash(docker tag:*)",
+      "Bash(docker exec:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

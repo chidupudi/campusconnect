@@ -34,14 +34,18 @@ spec:
               key: PORT
         - name: MONGODB_URI
           valueFrom:
-            configMapKeyRef:
-              name: backend-configmap
+            secretKeyRef:
+              name: backend-secret
               key: MONGODB_URI
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
               name: backend-secret
               key: JWT_SECRET
+        - name: FRONTEND_URL
+          value: "http://frontend-service:3000"
+        - name: FRONTEND_SERVICE_URL
+          value: "http://frontend-service:3000"
         resources:
           requests:
             memory: "256Mi"

@@ -13,7 +13,7 @@ RUN npm ci --silent && npm cache clean --force
 COPY . .
 
 # Set environment variables for production build
-ENV REACT_APP_API_URL=http://backend-service:5000
+ENV REACT_APP_API_URL=http://localhost:5000
 ENV NODE_ENV=production
 
 # Build the app
@@ -40,12 +40,12 @@ RUN chown -R nginx:nginx /usr/share/nginx/html && \
 # Create log directory
 RUN mkdir -p /var/log/nginx
 
-# Expose port (updated to match nginx config)
-EXPOSE 3500
+# Expose port
+EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3500/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]

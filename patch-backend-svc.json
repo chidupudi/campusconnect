@@ -1,8 +1,0 @@
-{
-  "spec": {
-    "type": "NodePort",
-    "ports": [
-      { "name": "api", "port": 3800, "targetPort": 5000, "nodePort": 30800 }
-    ]
-  }
-}

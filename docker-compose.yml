@@ -2,7 +2,7 @@ services:
   # MongoDB Database
   mongodb:
     image: mongo:7-jammy
-    container_name: campusconnect-mongodb
+    container_name: cc-mongodb
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
@@ -21,7 +21,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: campusconnect-backend
+    container_name: cc-backend
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -48,7 +48,7 @@ services:
     build:
       context: ./cc
       dockerfile: Dockerfile
-    container_name: campusconnect-frontend
+    container_name: cc-frontend
     restart: unless-stopped
     environment:
       REACT_APP_API_URL: http://localhost:5000

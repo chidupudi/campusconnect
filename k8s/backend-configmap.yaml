@@ -6,4 +6,4 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "5000"
-  MONGODB_URI: "mongodb://admin:password123@mongodb-service:27017/campusconnect?authSource=admin"
+  MONGODB_URI: "mongodb+srv://druthi:druthi%402004@devops-cc.w5sl0nw.mongodb.net/campusconnect?retryWrites=true&w=majority&appName=devops-cc"

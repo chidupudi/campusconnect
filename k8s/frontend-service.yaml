@@ -3,6 +3,9 @@ kind: Service
 metadata:
   name: frontend-service
   namespace: campusconnect
+  labels:
+    app: frontend
+    tier: frontend
 spec:
   selector:
     app: frontend
@@ -10,5 +13,5 @@ spec:
   - name: http
     protocol: TCP
     port: 3500
-    targetPort: 3000
+    targetPort: 3500
   type: LoadBalancer

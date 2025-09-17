@@ -63,7 +63,4 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
-      initContainers:
-      - name: wait-for-mongodb
-        image: busybox:1.35
-        command: ['sh', '-c', 'until nslookup mongodb-service; do echo waiting for mongodb; sleep 2; done;']
+      # Removed initContainers since we're using MongoDB Atlas (cloud-hosted)

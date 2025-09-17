@@ -30,16 +30,19 @@ const Student = mongoose.model('Student', studentSchema);
 router.post('/signup', async (req, res) => {
   try {
     const { name, email, course, password } = req.body;
-    
+    console.log(`[STUDENT] Signup attempt for email: ${email}`);
+
     // Check if student exists
     const existingStudent = await Student.findOne({ email });
     if (existingStudent) {
+      console.log(`[STUDENT] Signup failed - student already exists: ${email}`);
       return res.status(400).json({ message: 'Student already exists' });
     }
 
     // Create new student
     const student = new Student({ name, email, course, password });
     await student.save();
+    console.log(`[STUDENT] New student created: ${email}, Course: ${course}`);
 
     // Generate JWT token
     const token = jwt.sign(
@@ -48,8 +51,10 @@ router.post('/signup', async (req, res) => {
       { expiresIn: '1h' }
     );
 
+    console.log(`[STUDENT] JWT token generated for student: ${email}`);
     res.status(201).json({ token, student: { id: student._id, name, email, course } });
   } catch (error) {
+    console.error(`[STUDENT] Signup error: ${error.message}`, error);
     res.status(500).json({ message: 'Something went wrong' });
   }
 });
@@ -58,16 +63,19 @@ router.post('/signup', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+    console.log(`[STUDENT] Login attempt for email: ${email}`);
+
     // Find student
     const student = await Student.findOne({ email });
     if (!student) {
+      console.log(`[STUDENT] Login failed - student not found: ${email}`);
       return res.status(404).json({ message: 'Student not found' });
     }
 
     // Check password
     const isMatch = await student.comparePassword(password);
     if (!isMatch) {
+      console.log(`[STUDENT] Login failed - invalid credentials: ${email}`);
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
@@ -78,28 +86,35 @@ router.post('/login', async (req, res) => {
       { expiresIn: '1h' }
     );
 
+    console.log(`[STUDENT] Login successful for: ${email}`);
     res.json({ token, student: { id: student._id, name: student.name, email: student.email, course: student.course } });
   } catch (error) {
+    console.error(`[STUDENT] Login error: ${error.message}`, error);
     res.status(500).json({ message: 'Something went wrong' });
   }
 });
 
-// Add this to your student routes file
+// Get student profile
 router.get('/profile', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
+      console.log('[STUDENT] Profile access denied - no token provided');
       return res.status(401).json({ message: 'No token provided' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    console.log(`[STUDENT] Profile request for student ID: ${decoded.id}`);
+
     const student = await Student.findById(decoded.id)
       .select('-password -__v'); // Exclude sensitive fields
 
     if (!student) {
+      console.log(`[STUDENT] Profile fetch failed - student not found: ${decoded.id}`);
       return res.status(404).json({ message: 'Student not found' });
     }
 
+    console.log(`[STUDENT] Profile fetched successfully for: ${student.email}`);
     res.json({
       firstName: student.name.split(' ')[0],
       lastName: student.name.split(' ').slice(1).join(' ') || '',
@@ -108,7 +123,7 @@ router.get('/profile', async (req, res) => {
       year: '3' // You'll need to add year to your student model
     });
   } catch (error) {
-    console.error('Profile error:', error);
+    console.error('[STUDENT] Profile error:', error);
     res.status(500).json({ message: 'Error fetching profile' });
   }
 });

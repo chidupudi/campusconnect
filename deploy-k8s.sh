@@ -88,24 +88,13 @@ print_success "Namespace created"
 
 # Deploy secrets and configmaps
 print_status "Deploying secrets and configmaps..."
-kubectl apply -f k8s/mongodb-secret.yaml
-kubectl apply -f k8s/mongodb-configmap.yaml
 kubectl apply -f k8s/backend-secret.yaml
 kubectl apply -f k8s/backend-configmap.yaml
 kubectl apply -f k8s/frontend-configmap.yaml
 print_success "Secrets and ConfigMaps deployed"
 
-# Deploy MongoDB
-print_status "Deploying MongoDB..."
-kubectl apply -f k8s/mongodb-pvc.yaml
-kubectl apply -f k8s/mongodb-deployment.yaml
-kubectl apply -f k8s/mongodb-service.yaml
-print_success "MongoDB deployed"
-
-# Wait for MongoDB to be ready
-print_status "Waiting for MongoDB to be ready..."
-kubectl wait --for=condition=ready pod -l app=mongodb -n campusconnect --timeout=300s
-print_success "MongoDB is ready"
+# Note: MongoDB Atlas is used, so no local MongoDB deployment needed
+print_status "Using MongoDB Atlas (cloud-hosted) - no local MongoDB deployment required"
 
 # Deploy Backend
 print_status "Deploying Backend..."
@@ -164,13 +153,17 @@ echo "Backend API: http://localhost:$BACKEND_PORT"
 echo ""
 print_status "To access your application locally, run these commands in separate terminals:"
 echo "Frontend: kubectl port-forward service/frontend-service 3500:3500 -n campusconnect"
-echo "Backend:  kubectl port-forward service/backend-service 3800:3800 -n campusconnect"
+echo "Backend:  kubectl port-forward service/backend-service 5000:5000 -n campusconnect"
 
 echo ""
 print_status "To check logs:"
-echo "MongoDB: kubectl logs -l app=mongodb -n campusconnect"
-echo "Backend: kubectl logs -l app=backend -n campusconnect"
-echo "Frontend: kubectl logs -l app=frontend -n campusconnect"
+echo "Backend: kubectl logs -l app=backend -n campusconnect -f"
+echo "Frontend: kubectl logs -l app=frontend -n campusconnect -f"
+
+echo ""
+print_status "To check API health:"
+echo "Backend Health: kubectl port-forward service/backend-service 5000:5000 -n campusconnect & curl http://localhost:5000/health"
+echo "Frontend Health: kubectl port-forward service/frontend-service 3500:3500 -n campusconnect & curl http://localhost:3500/health"
 
 echo ""
 print_status "To delete the deployment:"

@@ -2,14 +2,15 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_CREDENTIALS = credentials('dockerhub-credentials')
         GCP_CREDENTIALS = credentials('gcp-service-account')
-        DOCKER_HUB_USERNAME = "${DOCKER_HUB_CREDENTIALS_USR}"
         PROJECT_ID = 'campusconnect-project'
         GKE_CLUSTER = 'campusconnect-cluster'
         GKE_ZONE = 'asia-south1-a'
-        IMAGE_FRONTEND = "${DOCKER_HUB_USERNAME}/campusconnect-frontend"
-        IMAGE_BACKEND = "${DOCKER_HUB_USERNAME}/campusconnect-backend"
+        GAR_LOCATION = 'asia-south1'
+        GAR_REPOSITORY = 'campusconnect-repo'
+        IMAGE_FRONTEND = 'campusconnect-frontend'
+        IMAGE_BACKEND = 'campusconnect-backend'
+        GAR_REGISTRY = "${GAR_LOCATION}-docker.pkg.dev"
     }
 
     stages {
@@ -39,27 +40,43 @@ pipeline {
             }
         }
 
-        stage('Build Docker Images') {
+        stage('Setup Artifact Registry') {
+            steps {
+                sh '''
+                    gcloud auth activate-service-account --key-file=${GCP_CREDENTIALS}
+                    gcloud config set project ${PROJECT_ID}
+
+                    # Configure Docker for Artifact Registry
+                    gcloud auth configure-docker ${GAR_REGISTRY}
+
+                    # Create repository if it doesn't exist
+                    gcloud artifacts repositories create ${GAR_REPOSITORY} \
+                        --repository-format=docker \
+                        --location=${GAR_LOCATION} \
+                        --description="CampusConnect application images" || true
+                '''
+            }
+        }
+
+        stage('Build and Push Docker Images') {
             parallel {
                 stage('Build Backend') {
                     steps {
                         script {
-                            def backendImage = docker.build("${IMAGE_BACKEND}:${BUILD_NUMBER}", "./server")
-                            docker.withRegistry('https://registry-1.docker.io', 'dockerhub-credentials') {
-                                backendImage.push("${BUILD_NUMBER}")
-                                backendImage.push("latest")
-                            }
+                            def backendImageUrl = "${GAR_REGISTRY}/${PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_BACKEND}"
+                            def backendImage = docker.build("${backendImageUrl}:${BUILD_NUMBER}", "./server")
+                            backendImage.push("${BUILD_NUMBER}")
+                            backendImage.push("latest")
                         }
                     }
                 }
                 stage('Build Frontend') {
                     steps {
                         script {
-                            def frontendImage = docker.build("${IMAGE_FRONTEND}:${BUILD_NUMBER}", "./cc")
-                            docker.withRegistry('https://registry-1.docker.io', 'dockerhub-credentials') {
-                                frontendImage.push("${BUILD_NUMBER}")
-                                frontendImage.push("latest")
-                            }
+                            def frontendImageUrl = "${GAR_REGISTRY}/${PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_FRONTEND}"
+                            def frontendImage = docker.build("${frontendImageUrl}:${BUILD_NUMBER}", "./cc")
+                            frontendImage.push("${BUILD_NUMBER}")
+                            frontendImage.push("latest")
                         }
                     }
                 }
@@ -79,11 +96,11 @@ pipeline {
                         gcloud container clusters get-credentials ${GKE_CLUSTER} --zone ${GKE_ZONE}
                     '''
 
-                    // Update deployment images
+                    // Update deployment images with Artifact Registry URLs
                     sh '''
                         cd k8s
-                        sed -i "s|IMAGE_BACKEND|${IMAGE_BACKEND}:${BUILD_NUMBER}|g" backend-deployment.yaml
-                        sed -i "s|IMAGE_FRONTEND|${IMAGE_FRONTEND}:${BUILD_NUMBER}|g" frontend-deployment.yaml
+                        sed -i "s|IMAGE_BACKEND|${GAR_REGISTRY}/${PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_BACKEND}:${BUILD_NUMBER}|g" backend-deployment.yaml
+                        sed -i "s|IMAGE_FRONTEND|${GAR_REGISTRY}/${PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_FRONTEND}:${BUILD_NUMBER}|g" frontend-deployment.yaml
 
                         # Apply manifests
                         kubectl apply -f namespace.yaml

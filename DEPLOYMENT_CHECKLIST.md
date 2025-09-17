@@ -7,12 +7,16 @@
 - [ ] Ensure main branch is protected
 - [ ] Add collaborators if needed
 
-### ✅ **2. Docker Hub Setup**
-- [ ] Create Docker Hub account
-- [ ] Create repositories:
-  - [ ] `your-username/campusconnect-frontend`
-  - [ ] `your-username/campusconnect-backend`
-- [ ] Generate access token for automation
+### ✅ **2. GCP Artifact Registry Setup**
+- [ ] Enable Artifact Registry API: `gcloud services enable artifactregistry.googleapis.com`
+- [ ] Create repository:
+  ```bash
+  gcloud artifacts repositories create campusconnect-repo \
+    --repository-format=docker \
+    --location=asia-south1 \
+    --description="CampusConnect application images"
+  ```
+- [ ] Configure Docker authentication: `gcloud auth configure-docker asia-south1-docker.pkg.dev`
 
 ### ✅ **3. Google Cloud Platform Setup**
 ```bash
@@ -42,6 +46,10 @@ gcloud projects add-iam-policy-binding campusconnect-project \
   --member="serviceAccount:github-actions@campusconnect-project.iam.gserviceaccount.com" \
   --role="roles/container.developer"
 
+gcloud projects add-iam-policy-binding campusconnect-project \
+  --member="serviceAccount:github-actions@campusconnect-project.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
 # 6. Generate service account key
 gcloud iam service-accounts keys create key.json \
   --iam-account=github-actions@campusconnect-project.iam.gserviceaccount.com
@@ -51,10 +59,10 @@ gcloud iam service-accounts keys create key.json \
 Go to GitHub Repository → Settings → Secrets and variables → Actions
 
 Add these secrets:
-- [ ] `DOCKER_HUB_USERNAME` = your Docker Hub username
-- [ ] `DOCKER_HUB_ACCESS_TOKEN` = your Docker Hub access token
 - [ ] `GCP_PROJECT_ID` = campusconnect-project
 - [ ] `GCP_SA_KEY` = contents of key.json file (entire JSON)
+
+**Note:** No Docker Hub secrets needed anymore! ✅
 
 ### ✅ **5. Environment Variables**
 Update production secrets:
@@ -75,7 +83,7 @@ echo -n "your-production-jwt-secret-here" | base64
 
 **Pipeline Flow:**
 ```
-GitHub Push → Tests → Docker Build → Docker Hub → GKE Deploy → Live
+GitHub Push → Tests → Docker Build → Artifact Registry → GKE Deploy → Live
 ```
 
 **Steps:**

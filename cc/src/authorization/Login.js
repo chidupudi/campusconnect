@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  Box, 
-  Container, 
-  Typography, 
-  Tabs, 
-  Tab, 
-  TextField, 
-  Button, 
+import {
+  Box,
+  Container,
+  Typography,
+  Tabs,
+  Tab,
+  TextField,
+  Button,
   Paper,
   Stack,
   Snackbar,
@@ -16,6 +16,7 @@ import { styled } from '@mui/system';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
+import API_BASE_URL from '../config/api';
 
 const Root = styled('div')({
   display: 'flex',
@@ -93,7 +94,7 @@ const Login = () => {
       console.log('Attempting login to:', endpoint, 'with:', loginData.email);
   
       const response = await axios.post(
-        `http://localhost:5000${endpoint}`,
+        `${API_BASE_URL}${endpoint}`,
         loginData,
         {
           headers: {

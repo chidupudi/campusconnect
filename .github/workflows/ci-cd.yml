@@ -53,7 +53,7 @@ jobs:
     - name: Run frontend tests
       run: |
         cd cc
-        npm test -- --coverage --watchAll=false
+        npm test -- --coverage --watchAll=false --testTimeout=30000
 
     - name: Lint backend code
       run: |

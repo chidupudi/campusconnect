@@ -10,7 +10,11 @@
       "Bash(kubectl get services:*)",
       "Bash(kubectl get:*)",
       "Bash(docker tag:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(npm ci:*)",
+      "Bash(npm test:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm install)"
     ],
     "deny": [],
     "ask": []

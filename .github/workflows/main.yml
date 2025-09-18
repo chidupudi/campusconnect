@@ -29,24 +29,29 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
+        cache-dependency-path: |
+          server/package-lock.json
+          cc/package-lock.json
 
     - name: Setup Backend
       working-directory: ./server
       run: |
-        # Clean install with newer versions
-        rm -f package-lock.json
-        # Update dependencies to newer versions
-        npm install rimraf@latest glob@latest
-        npm install
+        # Install dependencies using package-lock.json
+        npm ci
+        # Update critical dependencies
+        npm install --save \
+          rimraf@latest \
+          glob@latest
+        # Generate new package-lock.json
+        npm i --package-lock-only
         npm test || echo "No tests configured"
 
     - name: Setup Frontend
       working-directory: ./cc
       run: |
-        # Clean install with newer versions
-        rm -f package-lock.json
-        # Install and update critical dependencies
-        npm install
+        # Install dependencies using package-lock.json
+        npm ci
+        # Update critical dependencies
         npm install --save \
           @jridgewell/sourcemap-codec@latest \
           @rollup/plugin-terser@latest \
@@ -61,6 +66,8 @@ jobs:
           @babel/plugin-transform-private-property-in-object@latest \
           react-scripts@latest \
           react-router-dom@6.x
+        # Generate new package-lock.json
+        npm i --package-lock-only
         
         # Run tests with updated packages
         CI=true npm test -- --coverage --watchAll=false --passWithNoTests || echo "Tests completed with warnings"

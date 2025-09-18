@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-const mongoURI = 'mongodb://localhost:27017/campusConnect'; // Change to your DB name
+const mongoURI = 'mongodb+srv://druthi:druthi%402004@devops-cc.w5sl0nw.mongodb.net/?retryWrites=true&w=majority&appName=devops-cc'; // Hardcoded for now
 mongoose.connect(mongoURI)
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('MongoDB connection error:', err));

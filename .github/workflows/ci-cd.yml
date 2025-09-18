@@ -86,8 +86,15 @@ jobs:
     - name: Configure Docker to use gcloud as credential helper
       run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
 
-    - name: Create Artifact Registry repository (if not exists)
+    - name: Enable Artifact Registry API and create repository
       run: |
+        # Enable API if not already enabled
+        gcloud services enable artifactregistry.googleapis.com
+
+        # Wait a moment for API to be ready
+        sleep 10
+
+        # Create repository (ignore if exists)
         gcloud artifacts repositories create ${{ env.GAR_REPOSITORY }} \
           --repository-format=docker \
           --location=${{ env.GAR_LOCATION }} \

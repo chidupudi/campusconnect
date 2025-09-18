@@ -10,8 +10,11 @@ RUN apk add --no-cache dumb-init
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --omit=dev && npm cache clean --force
+# Install and update dependencies
+RUN npm ci --omit=dev && \
+    npm install --save rimraf@latest glob@latest && \
+    npm audit fix --force || true && \
+    npm cache clean --force
 
 # Copy source code
 COPY . .

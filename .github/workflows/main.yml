@@ -80,6 +80,14 @@ jobs:
     - name: Setup Cloud SDK
       uses: 'google-github-actions/setup-gcloud@v1'
 
+    - name: Enable Google Cloud APIs
+      run: |
+        # Enable required APIs
+        gcloud services enable artifactregistry.googleapis.com
+        gcloud services enable container.googleapis.com
+        # Wait for APIs to be enabled
+        sleep 30
+
     - name: Configure Docker for GAR
       run: |
         gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev

@@ -6,8 +6,24 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies with better caching
-RUN npm ci --silent && npm cache clean --force
+# Install and update dependencies with better caching
+RUN npm ci --silent && \
+    npm install --save \
+    @jridgewell/sourcemap-codec@latest \
+    @rollup/plugin-terser@latest \
+    svgo@latest \
+    @eslint/config-array@latest \
+    @eslint/object-schema@latest \
+    @babel/plugin-transform-numeric-separator@latest \
+    @babel/plugin-transform-private-methods@latest \
+    @babel/plugin-transform-optional-chaining@latest \
+    @babel/plugin-transform-nullish-coalescing-operator@latest \
+    @babel/plugin-transform-class-properties@latest \
+    @babel/plugin-transform-private-property-in-object@latest \
+    react-scripts@latest \
+    react-router-dom@6.x && \
+    npm audit fix --force || true && \
+    npm cache clean --force
 
 # Copy source code
 COPY . .

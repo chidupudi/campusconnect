@@ -88,17 +88,25 @@ jobs:
 
     - name: Enable Artifact Registry API and create repository
       run: |
-        # Enable API if not already enabled
+        # Enable required APIs
+        echo "Enabling APIs..."
         gcloud services enable artifactregistry.googleapis.com
+        gcloud services enable container.googleapis.com
+        gcloud services enable cloudbuild.googleapis.com
 
-        # Wait a moment for API to be ready
-        sleep 10
+        # Wait longer for APIs to propagate
+        echo "Waiting for APIs to be ready..."
+        sleep 30
+
+        # Verify API is enabled
+        gcloud services list --enabled --filter="name:artifactregistry.googleapis.com" --format="value(name)"
 
         # Create repository (ignore if exists)
+        echo "Creating repository..."
         gcloud artifacts repositories create ${{ env.GAR_REPOSITORY }} \
           --repository-format=docker \
           --location=${{ env.GAR_LOCATION }} \
-          --description="CampusConnect application images" || true
+          --description="CampusConnect application images" || echo "Repository already exists"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3

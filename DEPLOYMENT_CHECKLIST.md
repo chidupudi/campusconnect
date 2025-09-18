@@ -16,6 +16,7 @@
     --location=asia-south1 \
     --description="CampusConnect application images"
   ```
+  
 - [ ] Configure Docker authentication: `gcloud auth configure-docker asia-south1-docker.pkg.dev`
 
 ### ✅ **3. Google Cloud Platform Setup**

@@ -15,7 +15,9 @@
       "Bash(npm test:*)",
       "Bash(npm ls:*)",
       "Bash(npm install)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(gcloud config set:*)",
+      "Bash(./scripts/fix-artifact-registry.sh:*)"
     ],
     "deny": [],
     "ask": []

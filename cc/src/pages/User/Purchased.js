@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import axios from "axios";
 import { format } from "date-fns";
+import API_BASE_URL from '../../config/api';
 
 const Purchased = () => {
   const [purchasedEvents, setPurchasedEvents] = useState([]);
@@ -31,7 +32,7 @@ const Purchased = () => {
           throw new Error("No authentication token found");
         }
 
-        const response = await axios.get("http://localhost:5000/api/events/user/purchased-events", {
+        const response = await axios.get(`${API_BASE_URL}/api/events/user/purchased-events`, {
           headers: {
             Authorization: `Bearer ${token}`
           }

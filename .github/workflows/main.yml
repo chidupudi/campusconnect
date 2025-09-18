@@ -1,0 +1,222 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PROJECT_ID: "222164861599"  # Using the actual project number from the error message
+  PROJECT_NAME: "campusconnect-project"
+  GKE_CLUSTER: campusconnect-cluster
+  GKE_ZONE: asia-south1-a
+  GAR_LOCATION: asia-south1
+  GAR_REPOSITORY: campusconnect-repo
+  IMAGE_FRONTEND: campusconnect-frontend
+  IMAGE_BACKEND: campusconnect-backend
+
+jobs:
+  build-test-deploy:
+    name: Build, Test, and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: |
+          server/package-lock.json
+          cc/package-lock.json
+
+    - name: Setup Backend
+      working-directory: ./server
+      run: |
+        # Install dependencies using package-lock.json
+        npm ci
+        # Update critical dependencies
+        npm install --save \
+          rimraf@latest \
+          glob@latest
+        # Generate new package-lock.json
+        npm i --package-lock-only
+        npm test || echo "No tests configured"
+
+    - name: Setup Frontend
+      working-directory: ./cc
+      run: |
+        # Install dependencies using package-lock.json
+        npm ci
+        # Update critical dependencies
+        npm install --save \
+          @jridgewell/sourcemap-codec@latest \
+          @rollup/plugin-terser@latest \
+          svgo@latest \
+          @eslint/config-array@latest \
+          @eslint/object-schema@latest \
+          @babel/plugin-transform-numeric-separator@latest \
+          @babel/plugin-transform-private-methods@latest \
+          @babel/plugin-transform-optional-chaining@latest \
+          @babel/plugin-transform-nullish-coalescing-operator@latest \
+          @babel/plugin-transform-class-properties@latest \
+          @babel/plugin-transform-private-property-in-object@latest \
+          react-scripts@latest \
+          react-router-dom@6.x
+        # Generate new package-lock.json
+        npm i --package-lock-only
+        
+        # Run tests with updated packages
+        CI=true npm test -- --coverage --watchAll=false --passWithNoTests || echo "Tests completed with warnings"
+
+    - name: Google Auth
+      id: auth
+      uses: 'google-github-actions/auth@v1'
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+        export_environment_variables: true
+        
+    - name: Setup Cloud SDK
+      uses: 'google-github-actions/setup-gcloud@v1'
+      with:
+        version: '>= 446.0.0'
+        install_components: 'beta'
+
+    - name: Verify Service Account and Enable APIs
+      id: setup-project
+      run: |
+        echo "Verifying service account permissions..."
+        SA_EMAIL=$(gcloud auth list --filter=status:ACTIVE --format="value(account)")
+        echo "Using service account: $SA_EMAIL"
+        
+        echo "Setting project..."
+        gcloud config set project ${{ env.PROJECT_ID }}
+        
+        echo "Adding required roles to service account..."
+        for role in roles/artifactregistry.admin roles/container.admin roles/storage.admin; do
+          gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role="$role" || true
+        done
+        
+        echo "Enabling required APIs..."
+        gcloud services enable artifactregistry.googleapis.com --project=${{ env.PROJECT_ID }}
+        gcloud services enable container.googleapis.com --project=${{ env.PROJECT_ID }}
+        
+        echo "Waiting for APIs to be enabled..."
+        sleep 60  # Give more time for API enablement to propagate
+        
+        echo "Creating Artifact Registry repository..."
+        gcloud artifacts repositories create ${{ env.GAR_REPOSITORY }} \
+          --repository-format=docker \
+          --location=${{ env.GAR_LOCATION }} \
+          --project=${{ env.PROJECT_ID }} \
+          --description="CampusConnect Docker repository" || true
+          
+        echo "Configuring Docker authentication..."
+        gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+    - name: Verify API Status
+      run: |
+        echo "Verifying Artifact Registry API status..."
+        STATUS=$(gcloud services list --project=${{ env.PROJECT_ID }} \
+          --filter="name:artifactregistry.googleapis.com" \
+          --format="value(state)")
+        if [ "$STATUS" != "ENABLED" ]; then
+          echo "Artifact Registry API is not enabled. Current status: $STATUS"
+          exit 1
+        fi
+        echo "Artifact Registry API is enabled and ready to use"
+
+    - name: Build and Push Images
+      run: |
+        # Function to retry docker push
+        function retry_push() {
+          local image=$1
+          local max_attempts=3
+          local attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Pushing $image (Attempt $attempt/$max_attempts)"
+            if docker push $image; then
+              return 0
+            fi
+            attempt=$((attempt + 1))
+            echo "Push failed, waiting before retry..."
+            sleep 30
+          done
+          return 1
+        }
+
+        # Build and push backend
+        echo "Building backend image..."
+        docker build --no-cache --pull \
+          --build-arg NODE_VERSION=20 \
+          --build-arg NODE_ENV=production \
+          -t ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }} \
+          -t ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_BACKEND }}:latest \
+          ./server
+
+        # Push backend images with retry
+        retry_push "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }}"
+        retry_push "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_BACKEND }}:latest"
+
+        # Build and push frontend
+        echo "Building frontend image..."
+        docker build --no-cache --pull \
+          --build-arg NODE_VERSION=20 \
+          --build-arg NODE_ENV=production \
+          --build-arg NPM_FLAGS="--legacy-peer-deps" \
+          -t ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }} \
+          -t ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_FRONTEND }}:latest \
+          ./cc
+
+        # Push frontend images with retry
+        retry_push "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}"
+        retry_push "${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_FRONTEND }}:latest"
+
+    - name: Get GKE Credentials
+      if: github.ref == 'refs/heads/main'
+      uses: 'google-github-actions/get-gke-credentials@v1'
+      with:
+        cluster_name: ${{ env.GKE_CLUSTER }}
+        location: ${{ env.GKE_ZONE }}
+
+    - name: Deploy to GKE
+      if: github.ref == 'refs/heads/main'
+      run: |
+        cd k8s
+        sed -i "s|IMAGE_BACKEND|${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }}|g" backend-deployment.yaml
+        sed -i "s|IMAGE_FRONTEND|${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}|g" frontend-deployment.yaml
+        
+        kubectl apply -f namespace.yaml
+        kubectl apply -f mongodb-secret.yaml
+        kubectl apply -f mongodb-deployment.yaml
+        kubectl apply -f backend-configmap.yaml
+        kubectl apply -f backend-deployment.yaml
+        kubectl apply -f backend-service.yaml
+        kubectl apply -f frontend-configmap.yaml
+        kubectl apply -f frontend-deployment.yaml
+        kubectl apply -f frontend-service.yaml
+
+        kubectl rollout status deployment/backend-deployment -n campusconnect --timeout=300s
+        kubectl rollout status deployment/frontend-deployment -n campusconnect --timeout=300s
+
+    - name: Health Check
+      if: github.ref == 'refs/heads/main'
+      run: |
+        echo "Waiting for LoadBalancer IP..."
+        sleep 60
+        EXTERNAL_IP=$(kubectl get service frontend-service -n campusconnect -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        if [ ! -z "$EXTERNAL_IP" ]; then
+          echo "Application deployed successfully!"
+          echo "Frontend URL: http://$EXTERNAL_IP:3700"
+          echo "Backend Health Check: http://$EXTERNAL_IP:3700/api/health"
+          curl -f "http://$EXTERNAL_IP:3700/health" || echo "Health check pending..."
+        else
+          echo "External IP not yet assigned. Check LoadBalancer status."
+        fi

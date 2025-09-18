@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { jwtDecode } from 'jwt-decode';
+import API_BASE_URL from '../config/api';
 import { 
   Avatar,
   Menu,
@@ -60,7 +61,7 @@ const Navbar = () => {
   const handleLogout = async () => {
     handleMenuClose();
     try {
-      await axios.post('http://localhost:5000/api/auth/logout', {}, {
+      await axios.post(`${API_BASE_URL}/api/auth/logout`, {}, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

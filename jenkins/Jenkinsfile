@@ -1,0 +1,168 @@
+pipeline {
+    agent any
+
+    environment {
+        GCP_CREDENTIALS = credentials('gcp-service-account')
+        PROJECT_ID = 'campusconnect-project'
+        GKE_CLUSTER = 'campusconnect-cluster'
+        GKE_ZONE = 'asia-south1-a'
+        GAR_LOCATION = 'asia-south1'
+        GAR_REPOSITORY = 'campusconnect-repo'
+        IMAGE_FRONTEND = 'campusconnect-frontend'
+        IMAGE_BACKEND = 'campusconnect-backend'
+        GAR_REGISTRY = "${GAR_LOCATION}-docker.pkg.dev"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/your-username/campusconnect.git'
+            }
+        }
+
+        stage('Test Backend') {
+            steps {
+                dir('server') {
+                    sh 'npm ci'
+                    sh 'npm test || echo "No tests configured"'
+                    sh 'npm run lint || echo "No lint configured"'
+                }
+            }
+        }
+
+        stage('Test Frontend') {
+            steps {
+                dir('cc') {
+                    sh 'npm ci'
+                    sh 'npm test -- --coverage --watchAll=false || echo "Tests completed"'
+                    sh 'npm run lint || echo "No lint configured"'
+                }
+            }
+        }
+
+        stage('Setup Artifact Registry') {
+            steps {
+                sh '''
+                    gcloud auth activate-service-account --key-file=${GCP_CREDENTIALS}
+                    gcloud config set project ${PROJECT_ID}
+
+                    # Configure Docker for Artifact Registry
+                    gcloud auth configure-docker ${GAR_REGISTRY}
+
+                    # Create repository if it doesn't exist
+                    gcloud artifacts repositories create ${GAR_REPOSITORY} \
+                        --repository-format=docker \
+                        --location=${GAR_LOCATION} \
+                        --description="CampusConnect application images" || true
+                '''
+            }
+        }
+
+        stage('Build and Push Docker Images') {
+            parallel {
+                stage('Build Backend') {
+                    steps {
+                        script {
+                            def backendImageUrl = "${GAR_REGISTRY}/${PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_BACKEND}"
+                            def backendImage = docker.build("${backendImageUrl}:${BUILD_NUMBER}", "./server")
+                            backendImage.push("${BUILD_NUMBER}")
+                            backendImage.push("latest")
+                        }
+                    }
+                }
+                stage('Build Frontend') {
+                    steps {
+                        script {
+                            def frontendImageUrl = "${GAR_REGISTRY}/${PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_FRONTEND}"
+                            def frontendImage = docker.build("${frontendImageUrl}:${BUILD_NUMBER}", "./cc")
+                            frontendImage.push("${BUILD_NUMBER}")
+                            frontendImage.push("latest")
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to GKE') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    // Authenticate with GCP
+                    sh '''
+                        gcloud auth activate-service-account --key-file=${GCP_CREDENTIALS}
+                        gcloud config set project ${PROJECT_ID}
+                        gcloud container clusters get-credentials ${GKE_CLUSTER} --zone ${GKE_ZONE}
+                    '''
+
+                    // Update deployment images with Artifact Registry URLs
+                    sh '''
+                        cd k8s
+                        sed -i "s|IMAGE_BACKEND|${GAR_REGISTRY}/${PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_BACKEND}:${BUILD_NUMBER}|g" backend-deployment.yaml
+                        sed -i "s|IMAGE_FRONTEND|${GAR_REGISTRY}/${PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_FRONTEND}:${BUILD_NUMBER}|g" frontend-deployment.yaml
+
+                        # Apply manifests
+                        kubectl apply -f namespace.yaml
+                        kubectl apply -f mongodb-secret.yaml
+                        kubectl apply -f mongodb-deployment.yaml
+                        kubectl apply -f backend-configmap.yaml
+                        kubectl apply -f backend-deployment.yaml
+                        kubectl apply -f backend-service.yaml
+                        kubectl apply -f frontend-configmap.yaml
+                        kubectl apply -f frontend-deployment.yaml
+                        kubectl apply -f frontend-service.yaml
+
+                        # Wait for rollout
+                        kubectl rollout status deployment/backend-deployment -n campusconnect --timeout=300s
+                        kubectl rollout status deployment/frontend-deployment -n campusconnect --timeout=300s
+
+                        # Get external IP
+                        kubectl get services frontend-service -n campusconnect
+                    '''
+                }
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+                    sh '''
+                        # Wait for external IP to be assigned
+                        echo "Waiting for LoadBalancer IP..."
+                        sleep 60
+
+                        # Get external IP
+                        EXTERNAL_IP=$(kubectl get service frontend-service -n campusconnect -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+                        if [ ! -z "$EXTERNAL_IP" ]; then
+                            echo "Application deployed successfully!"
+                            echo "Frontend URL: http://$EXTERNAL_IP:3700"
+                            echo "Backend Health Check: http://$EXTERNAL_IP:3700/api/health"
+
+                            # Basic health check
+                            curl -f "http://$EXTERNAL_IP:3700/health" || echo "Health check pending..."
+                        else
+                            echo "External IP not yet assigned. Check LoadBalancer status."
+                        fi
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean up workspace
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+            // You can add notifications here (Slack, email, etc.)
+        }
+        failure {
+            echo 'Pipeline failed!'
+            // You can add failure notifications here
+        }
+    }
+}

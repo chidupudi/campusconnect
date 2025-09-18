@@ -15,6 +15,7 @@ import {
   CircularProgress
 } from "@mui/material";
 import axios from "axios";
+import API_BASE_URL from '../../config/api';
 
 const Clubs = () => {
   const [search, setSearch] = useState("");
@@ -27,7 +28,7 @@ const Clubs = () => {
     const fetchClubs = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await axios.get("http://localhost:5000/api/clubs/all", {
+        const response = await axios.get(`${API_BASE_URL}/api/clubs/all`, {
           headers: {
             Authorization: `Bearer ${token}`
           }

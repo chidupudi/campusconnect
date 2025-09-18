@@ -13,6 +13,7 @@ import {
 import { Edit, Save, Cancel } from "@mui/icons-material";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import API_BASE_URL from '../config/api';
 import { deepPurple } from "@mui/material/colors";
 
 const ClubProfile = () => {
@@ -42,7 +43,7 @@ const ClubProfile = () => {
           throw new Error("Access denied. Club authorization required");
         }
 
-        const response = await axios.get("http://localhost:5000/api/clubs/profile", {
+        const response = await axios.get(`${API_BASE_URL}/api/clubs/profile`, {
           headers: {
             Authorization: `Bearer ${token}`
           }
@@ -74,7 +75,7 @@ const ClubProfile = () => {
       const token = localStorage.getItem("token");
       
       const response = await axios.put(
-        "http://localhost:5000/api/clubs/profile",
+        `${API_BASE_URL}/api/clubs/profile`,
         profile,
         {
           headers: {

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  Box, 
-  Container, 
-  Typography, 
-  Tabs, 
-  Tab, 
-  TextField, 
-  Button, 
+import {
+  Box,
+  Container,
+  Typography,
+  Tabs,
+  Tab,
+  TextField,
+  Button,
   Paper,
   Stack,
   Snackbar,
@@ -14,7 +14,8 @@ import {
 } from '@mui/material';
 import { styled } from '@mui/system';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../config/api';
 
 const Root = styled('div')({
   display: 'flex',
@@ -89,7 +90,7 @@ const Signup = () => {
     setLoading(true);
     
     try {
-      const response = await axios.post('http://localhost:5000/api/students/signup', studentData);
+      const response = await axios.post(`${API_BASE_URL}/api/students/signup`, studentData);
       console.log('Signup successful:', response.data);
       setSnackbar({
         open: true,
@@ -120,7 +121,7 @@ const Signup = () => {
     setLoading(true);
     
     try {
-      const response = await axios.post('http://localhost:5000/api/clubs/signup', clubData);
+      const response = await axios.post(`${API_BASE_URL}/api/clubs/signup`, clubData);
       console.log('Signup successful:', response.data);
       setSnackbar({
         open: true,

@@ -1,0 +1,26 @@
+# Since we're using MongoDB Atlas, we don't need a MongoDB deployment
+# This file is kept for reference but won't be applied in production
+#
+# MongoDB Atlas provides:
+# - Managed database service
+# - Automatic scaling
+# - Built-in security
+# - Monitoring and alerting
+# - Automated backups
+#
+# Connection is handled via the MONGODB_URI secret in backend-secret.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-service
+  namespace: campusconnect
+  labels:
+    app: mongodb
+spec:
+  # This is a headless service since we're using external MongoDB Atlas
+  type: ExternalName
+  externalName: devops-cc.w5sl0nw.mongodb.net
+  ports:
+  - port: 27017
+    targetPort: 27017

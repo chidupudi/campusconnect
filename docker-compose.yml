@@ -1,0 +1,47 @@
+services:
+  # Backend Server
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: cc-backend
+    restart: unless-stopped
+    env_file:
+      - ./server/.env
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      FRONTEND_URL: http://localhost:3700
+      FRONTEND_SERVICE_URL: http://frontend:3000
+    ports:
+      - "5000:5000"
+    networks:
+      - campusconnect-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./cc
+      dockerfile: Dockerfile
+    container_name: cc-frontend
+    restart: unless-stopped
+    env_file:
+      - ./cc/.env
+    environment:
+      REACT_APP_API_URL: http://localhost:5000
+      REACT_APP_NODE_ENV: production
+    ports:
+      - "3700:3000"
+    depends_on:
+      - backend
+    networks:
+      - campusconnect-network
+
+networks:
+  campusconnect-network:
+    driver: bridge

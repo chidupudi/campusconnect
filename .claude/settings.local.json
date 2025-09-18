@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(docker-compose:*)",
+      "Bash(curl:*)",
+      "Bash(kubectl get pods:*)",
+      "Bash(kubectl delete pod:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(kubectl get services:*)",
+      "Bash(kubectl get:*)",
+      "Bash(docker tag:*)",
+      "Bash(docker exec:*)",
+      "Bash(npm ci:*)",
+      "Bash(npm test:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm install)",
+      "Bash(chmod:*)",
+      "Bash(gcloud config set:*)",
+      "Bash(./scripts/fix-artifact-registry.sh:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
